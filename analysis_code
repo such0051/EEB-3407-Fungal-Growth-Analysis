@@ -1,0 +1,158 @@
+#Set WD, load packages, read data
+setwd("")
+library(tidyverse)
+library(data.table)
+growth<-read.csv("growth_data_test.csv", header=TRUE)
+
+#Calculate mean area by treatment also standard deviation
+mean_growth<-aggregate(area~t+treatment, growth, mean)
+sd_growth<-aggregate(area~t+treatment, growth, sd)
+colnames(sd_growth)<-c('t', 'treatment', 'sd')
+summ_growth<-merge(mean_growth, sd_growth, by=c("t", "treatment"))
+
+#Generate growth curve, honestly maybe remove error bars for final paper if they're too cluttered; also check if dodge should be put in
+p1<-ggplot(summ_growth, aes(t, area, color=treatment))+
+  geom_point()+
+  geom_smooth()+
+  geom_errorbar(aes(ymin=area-sd, ymax=area+sd), width=.2)+
+  xlab("Time (days)") + ylab("Area (cm^2)")
+
+p1
+
+p1+theme(legend.position = "none", panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+         panel.background = element_blank(), axis.line = element_line(colour = "black"))
+
+###Let's try modeling by copying and adjusting lemna analysis###
+# We can start making empty vectors we can add to.
+darea = numeric() # a numeric empty vector named "dN"
+dt = numeric() # a numeric emtpy vetor named "dt"
+
+# Make sure our data is consistently sorted:
+growth = growth[order(growth$ID,growth$t),]
+
+# Now let's pull out our sample ID names.
+typeof(growth$ID) # determine the type of the SampleID 
+
+samples = unique(as.character(growth$ID)) # select unique sample IDs
+samples # Now see the list of sample IDs 
+
+# Now we run through each sample, calculating the values we need
+for (i in 1:length(samples)) { 
+  sub_data = subset(growth, as.character(growth$ID) == samples[i])
+  darea = c(darea, sub_data$area[2:nrow(sub_data)] - sub_data$area[1:(nrow(sub_data)-1)], NA)
+  dt = c(dt, sub_data$t[2:nrow(sub_data)] - sub_data$t[1:(nrow(sub_data)-1)], NA) 
+}
+
+# Add those dN and dt values to our lemna data 
+growth$darea = darea
+growth$dt = dt
+
+#And calculate our per capita growth and add another column that stores those values in the data:
+growth$perCapita = (1/growth$area) * (growth$darea/growth$dt)
+
+#Because we start at an area of zero, we need to get rid of all those zeroes so there aren't any infinities in the data; shouldn't affect results too much in the end
+growth1<-filter(growth, t!=0)
+
+#Here it might be worth just plotting, actually probably necessary
+p2<-ggplot(growth1, aes(area, perCapita, color=treatment))+
+  geom_smooth(method="lm", se=FALSE)+
+  theme_minimal()+
+  xlab("Area (% of plate occupied)") + ylab("Per Unit Area Growth Rate")
+
+p2
+
+p2+theme(legend.position = "none", panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+         panel.background = element_blank(), axis.line = element_line(colour = "black"))
+
+#linear regression of the above plot
+c<-filter(growth1, treatment=="control")
+cpcva<-lm(perCapita~area, c)
+summary(cpcva)
+
+l<-filter(growth1, treatment=="low")
+lpcva<-lm(perCapita~area, l)
+summary(lpcva)
+
+m<-filter(growth1, treatment=="medium")
+mpcva<-lm(perCapita~area, m)
+summary(mpcva)
+
+h<-filter(growth1, treatment=="high")
+hpcva<-lm(perCapita~area, h)
+summary(hpcva)
+
+#getting r and s values for the above graph
+library(plyr)
+# Break up d by state, then fit the specified model to each piece and
+# return a list
+models <- dlply(growth1, "treatment", function(df) 
+  lm(perCapita ~ area, data = df))
+
+# Apply coef to each model and return a data frame
+ldply(models, coef)
+
+# Print the summary of each model
+l_ply(models, summary, .print = TRUE)
+
+#use the matrix of sample ids from before
+samples
+samples[1]
+tmpdata <- subset(growth1, ID==samples[1])#subset each data
+#print(samples[i]) #print out the sample ids
+mod1 <- lm(perCapita~area,data=tmpdata)#run the model
+summary(mod1)#examine the slope and intercept
+coef(mod1)#pull out the slope and intercept 
+# create an empty matrix with 4 different columns with the lengths of your samples called "mat"
+mat <- matrix(nrow=length(samples),ncol=4)
+# create column names according to the data format 
+colnames(mat) <- c("r","s","treatment","ID")
+# extract r and s from a linear model of per capita growth rate 
+for(i in 1:length(samples)){
+  tmp <- subset(growth1, ID==samples[i])#subset each data
+  #print(samples[i]) #print out the sample ids
+  mod1 <- lm(perCapita~area,data=tmp)#run the model
+  mat[i,1:2] <-   round(coef(mod1),4)#store the coefficients
+  mat[i,3] <- unique(as.character(tmp$treatment))#store the treatment 
+  mat[i,4] <- unique(as.character(tmp$ID))
+}
+outtable <- as.data.frame(mat)
+# see if all the r and s points into the matrix we made. # download packages if you haven't downloaded it before 
+library(gt)
+outtable %>% gt()#use this package to make easy tables 
+outtable$r<-as.numeric(outtable$r)
+outtable$s<-as.numeric(outtable$s)
+
+###Ok so now we have the r and s values of our curves###
+
+#plotting r vs treatment
+p3<-ggplot(outtable, aes(treatment, r, fill=treatment))+
+  geom_boxplot()+
+  theme_minimal()+
+  xlab("Treatment") + ylab("Intrinsic Growth Rate (r)")
+
+p3
+
+p3+theme(legend.position = "none", panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+         panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  scale_x_discrete(limits=c("control", "low", "medium", "high"))
+
+#ANOVA for r vs treatment
+rvtaov<-aov(r~treatment, outtable)
+summary(rvtaov)
+TukeyHSD(rvtaov)
+
+#plotting s vs treatment
+p4<-ggplot(outtable, aes(treatment, s, fill=treatment))+
+  geom_boxplot()+
+  theme_minimal()+
+  xlab("Treatment") + ylab("Density-Dependent Growth Rate (s)")
+
+p4
+
+p4+theme(legend.position = "none", panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+         panel.background = element_blank(), axis.line = element_line(colour = "black"))
+
+#ANOVA for s vs treatment
+svtaov<-aov(s~treatment, outtable)
+summary(svtaov)
+TukeyHSD(svtaov)
