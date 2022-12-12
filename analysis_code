@@ -17,6 +17,7 @@ summ_growth<-merge(mean_growth, sd_growth, by=c("t", "treatment"))
 #Generate growth curve, honestly maybe remove error bars for final paper if they're too cluttered; also check if dodge should be put in
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 p1<-ggplot(summ_growth, aes(t, area))+
+  facet_wrap(~treatment)+
   scale_colour_manual(values=cbPalette)+
   geom_point(aes(colour=treatment, group=treatment))+
   geom_smooth(aes(colour=treatment, group=treatment),se=FALSE)+
@@ -179,6 +180,6 @@ summary(svtaov)
 TukeyHSD(svtaov)
 
 
-r_median<-aggregate(r~Treatment, outtable, median)
-s_median<-aggregate(s~Treatment, outtable, median)
-coefmedian<-merge(r_median, s_median, by="Treatment")
+r_mean<-aggregate(r~Treatment, outtable, mean)
+s_mean<-aggregate(s~Treatment, outtable, mean)
+coefmean<-merge(r_median, s_median, by="Treatment")
